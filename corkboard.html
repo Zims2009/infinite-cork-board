@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Infinite Corkboard</title>
+
+<style>
+:root {
+--bg-color: #d7a15c;
+--pattern-color: #bc843d;
+}
+
+* {
+box-sizing: border-box;
+}
+
+html, body {
+margin: 0;
+padding: 0;
+width: 100%;
+height: 100%;
+overflow: hidden;
+font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+user-select: none;
+}
+
+#corkboard-container {
+width: 100%;
+height: 100%;
+position: relative;
+overflow: hidden;
+cursor: grab;
+background-color: var(--bg-color);
+background-image:
+radial-gradient(var(--pattern-color) 15%, transparent 16%),
+radial-gradient(var(--pattern-color) 15%, transparent 16%);
+background-size: 60px 60px;
+background-position: 0 0, 30px 30px;
+}
+
+#corkboard-container:active {
+cursor: grabbing;
+}
+
+#canvas {
+position: absolute;
+top: 0;
+left: 0;
+transform-origin: 0 0;
+}
+
+#svg-layer {
+position: absolute;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
+transform-origin: 0 0;
+pointer-events: none;
+z-index: 1;
+overflow: visible;
+}
+
+.board-item {
+position: absolute;
+background: white;
+padding: 10px 10px 25px;
+box-shadow: 3px 5px 15px rgba(0,0,0,0.3);
+cursor: move;
+z-index: 2;
+transition: box-shadow 0.2s;
+display: inline-block;
+}
+
+.board-item:hover {
+box-shadow: 5px 10px 20px rgba(0,0,0,0.4);
+}
+
+.board-item img {
+max-width: 100%;
+height: auto;
+display: block;
+pointer-events: none;
+min-width:250px;
+}
+
+.pin {
+position: absolute;
+top: -10px;
+left: calc(50% - 10px);
+width: 20px;
+height: 20px;
+background: #ff3b30;
+border-radius: 50%;
+box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+cursor: crosshair;
+z-index: 5;
+}
+
+.pin::after {
+content: '';
+position: absolute;
+top: 5px;
+left: 5px;
+width: 6px;
+height: 6px;
+background: rgba(255,255,255,0.6);
+border-radius: 50%;
+}
+
+.pin:hover {
+transform: scale(1.2);
+}
+
+#tool-dock {
+position: fixed;
+top: 20px;
+left: 20px;
+z-index: 100;
+}
+
+#tool-pin {
+width: 30px;
+height: 30px;
+border: 2px solid rgba(255,255,255,0.85);
+border-radius: 50%;
+background: #171717;
+color: white;
+display: grid;
+place-items: center;
+font-size: 15px;
+cursor: pointer;
+box-shadow: 0 3px 9px rgba(0,0,0,0.35);
+}
+
+#controls {
+position: absolute;
+top: 30px;
+left: 0;
+background: rgba(255,255,255,0.94);
+padding: 15px;
+border-radius: 8px;
+box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+z-index: 100;
+opacity: 0;
+visibility: hidden;
+transform: translateY(-5px);
+transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+pointer-events: none;
+min-width: 270px;
+}
+
+#tool-dock:hover #controls,
+#tool-dock:focus-within #controls,
+#tool-dock.open #controls {
+opacity: 1;
+visibility: visible;
+transform: translateY(0);
+pointer-events: auto;
+}
+
+.control-group {
+margin-bottom: 10px;
+display: flex;
+align-items: center;
+gap: 10px;
+}
+
+.control-group:last-child {
+margin-bottom: 0;
+}
+
+label {
+font-size: 14px;
+font-weight: bold;
+color: #333;
+}
+
+input[type="color"] {
+border: none;
+width: 40px;
+height: 25px;
+cursor: pointer;
+background: transparent;
+}
+
+.hint {
+font-size: 11px;
+color: #666;
+margin-top: 5px;
+line-height: 1.6;
+}
+
+.board-item.selected {
+outline: 2px solid #2196f3;
+z-index: 20;
+}
+
+.resize-handle {
+position: absolute;
+width: 16px;
+height: 16px;
+right: 0;
+bottom: 0;
+background: #2196f3;
+border: 2px solid white;
+border-radius: 3px;
+cursor: nwse-resize;
+z-index: 10;
+display: none;
+}
+
+.board-item.selected .resize-handle {
+display: block;
+}
+
+.connection-selected {
+stroke: #2196f3 !important;
+stroke-width: 6 !important;
+filter: drop-shadow(0 0 3px white);
+}
+
+#delete-selected {
+border: none;
+padding: 8px 12px;
+border-radius: 5px;
+background: #e74c3c;
+color: white;
+font-weight: bold;
+cursor: pointer;
+}
+
+#delete-selected:hover {
+background: #c0392b;
+}
+
+.hint strong {
+color: #333;
+}
+
+.tool-button {
+border: 0;
+border-radius: 5px;
+padding: 8px 10px;
+background: #34495e;
+color: white;
+font-weight: 600;
+cursor: pointer;
+}
+.tool-button:hover { background: #22313f; }
+#load-file { display: none; }
+
+/* === Text Item Styles === */
+
+.text-content {
+min-width: 20px;
+min-height: 20px;
+width: 100%;
+padding: 4px 2px;
+font-size: 18px;
+line-height: 1.4;
+color: #333333;
+outline: none;
+cursor: text;
+white-space: pre-wrap;
+word-wrap: break-word;
+overflow: hidden;
+font-family: 'Patrick Hand', cursive;
+user-select: text;
+}
+
+.text-content:empty::before {
+content: 'Type here...';
+color: #aaa;
+pointer-events: none;
+}
+
+.text-content:focus {
+outline: none;
+}
+
+/* Text Options Panel */
+.text-options {
+display: none;
+border-top: 1px solid #ddd;
+padding-top: 10px;
+margin-top: 10px;
+}
+
+.text-options.visible {
+display: block;
+}
+
+.text-options-row {
+display: flex;
+align-items: center;
+gap: 8px;
+margin-bottom: 8px;
+flex-wrap: wrap;
+}
+
+.text-options-row:last-child {
+margin-bottom: 0;
+}
+
+.text-options-row label {
+font-size: 12px;
+font-weight: 600;
+color: #555;
+min-width: 50px;
+}
+
+.text-options-row select {
+padding: 4px 6px;
+border: 1px solid #ccc;
+border-radius: 4px;
+font-size: 12px;
+background: white;
+cursor: pointer;
+flex: 1;
+min-width: 90px;
+}
+
+.align-btn {
+width: 32px;
+height: 28px;
+border: 1px solid #ccc;
+border-radius: 4px;
+background: white;
+cursor: pointer;
+font-size: 14px;
+display: grid;
+place-items: center;
+color: #555;
+transition: all 0.15s;
+}
+
+.align-btn:hover {
+background: #f0f0f0;
+}
+
+.align-btn.active {
+background: #2196f3;
+color: white;
+border-color: #2196f3;
+}
+
+#text-color-input {
+width: 32px;
+height: 28px;
+border: 1px solid #ccc;
+border-radius: 4px;
+cursor: pointer;
+padding: 2px;
+background: white;
+}
+
+#add-text-btn {
+background: #27ae60;
+}
+
+#add-text-btn:hover {
+background: #219a52;
+}
+</style>
+</head>
+
+<body>
+
+<div id="tool-dock">
+<button id="tool-pin" type="button" aria-label="Show corkboard tools" title="Hover to show tools">●</button>
+<div id="controls">
+<div class="control-group">
+<label for="string-color">String Color:</label>
+<input type="color" id="string-color" value="#ff3b30">
+<button id="delete-selected" type="button">
+🗑 Delete Selected
+</button>
+</div>
+
+<div class="control-group">
+<button id="save-board" class="tool-button" type="button">Save JSON</button>
+<button id="load-board" class="tool-button" type="button">Load JSON</button>
+<button id="add-text-btn" class="tool-button" type="button">✏️ Add Text</button>
+<input id="load-file" type="file" accept=".json,application/json">
+</div>
+<div class="control-group">
+<button id="export-jpeg" class="tool-button" type="button">Export JPEG</button>
+<button id="export-svg" class="tool-button" type="button">Export SVG</button>
+</div>
+
+<div id="text-options" class="text-options">
+<div class="text-options-row">
+<label>Font:</label>
+<select id="text-font">
+<option value="Patrick Hand" selected>Patrick Hand</option>
+<option value="Segoe UI">Segoe UI</option>
+<option value="Georgia">Georgia</option>
+<option value="Courier New">Courier New</option>
+<option value="Arial">Arial</option>
+<option value="Comic Sans MS">Comic Sans MS</option>
+</select>
+</div>
+<div class="text-options-row">
+<label>Weight:</label>
+<select id="text-weight">
+<option value="300">Light</option>
+<option value="400" selected>Normal</option>
+<option value="500">Medium</option>
+<option value="600">Semi-Bold</option>
+<option value="700">Bold</option>
+</select>
+<label>Color:</label>
+<input type="color" id="text-color-input" value="#333333">
+</div>
+<div class="text-options-row">
+<label>Align:</label>
+<button class="align-btn active" data-align="left" title="Align Left">≡</button>
+<button class="align-btn" data-align="center" title="Align Center">≡</button>
+<button class="align-btn" data-align="right" title="Align Right">≡</button>
+</div>
+</div>
+
+<div class="hint">
+1. Drag and drop images onto the board<br>
+2. Click "Add Text" to create a text note<br>
+3. Double-click text to edit; drag to move<br>
+4. Connect red pins; strings sag with gravity<br>
+5. Drag empty space to pan; scroll to zoom<br>
+6. Select an item/string and press Delete to remove<br>
+7. Drag bottom-right corner to resize
+</div>
+</div>
+</div>
+
+<div id="corkboard-container">
+<svg id="svg-layer"></svg>
+<div id="canvas"></div>
+</div>
+
+<script>
+const container = document.getElementById('corkboard-container');
+const canvas = document.getElementById('canvas');
+const svgLayer = document.getElementById('svg-layer');
+const stringColorInput = document.getElementById('string-color');
+const deleteButton = document.getElementById('delete-selected');
+const saveButton = document.getElementById('save-board');
+const loadButton = document.getElementById('load-board');
+const loadFileInput = document.getElementById('load-file');
+const exportJpegButton = document.getElementById('export-jpeg');
+const exportSvgButton = document.getElementById('export-svg');
+const toolDock = document.getElementById('tool-dock');
+const toolPin = document.getElementById('tool-pin');
+const addTextBtn = document.getElementById('add-text-btn');
+const textOptionsPanel = document.getElementById('text-options');
+const textFontSelect = document.getElementById('text-font');
+const textWeightSelect = document.getElementById('text-weight');
+const textColorInput = document.getElementById('text-color-input');
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+let panX = 0;
+let panY = 0;
+let zoom = 1;
+
+let isPanning = false;
+let startX = 0;
+let startY = 0;
+
+let isDraggingItem = false;
+let isResizingItem = false;
+let activeItem = null;
+let itemOffsetX = 0;
+let itemOffsetY = 0;
+let resizeStartX = 0;
+let resizeStartY = 0;
+let resizeStartWidth = 0;
+let resizeStartHeight = 0;
+let resizeShouldScaleFont = false;
+let resizeBaseWidth = 0;
+let resizeBaseFontSize = 18;
+
+let isDrawingString = false;
+let startPin = null;
+let tempLine = null;
+let selectedItem = null;
+let selectedConnection = null;
+let isEditingText = false;
+
+let itemCount = 0;
+const connections = [];
+
+function updateTransform() {
+const transformStr = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+canvas.style.transform = transformStr;
+svgLayer.style.transform = transformStr;
+drawConnections();
+}
+
+updateTransform();
+
+function screenToBoard(clientX, clientY) {
+const rect = container.getBoundingClientRect();
+return {
+x: (clientX - rect.left - panX) / zoom,
+y: (clientY - rect.top - panY) / zoom
+};
+}
+
+function getPinCenterCoordinates(pinElement) {
+const item = pinElement.parentElement;
+const itemX = parseFloat(item.style.left) || 0;
+const itemY = parseFloat(item.style.top) || 0;
+
+return {
+x: itemX + pinElement.offsetLeft + pinElement.offsetWidth / 2,
+y: itemY + pinElement.offsetTop + pinElement.offsetHeight / 2
+};
+}
+
+function boardToScreen(point) {
+return {
+x: point.x * zoom + panX,
+y: point.y * zoom + panY
+};
+}
+
+function createLine() {
+return document.createElementNS(SVG_NS, 'line');
+}
+
+function gravityPath(from, to, sagFactor = 0.16, minSag = 12, maxSag = 120) {
+const dx = to.x - from.x;
+const dy = to.y - from.y;
+const distance = Math.hypot(dx, dy);
+const sag = Math.max(minSag, Math.min(maxSag, distance * sagFactor));
+const controlX = (from.x + to.x) / 2;
+const controlY = (from.y + to.y) / 2 + sag;
+return `M ${from.x} ${from.y} Q ${controlX} ${controlY} ${to.x} ${to.y}`;
+}
+
+function drawConnections() {
+connections.forEach(conn => {
+const fromEl = document.getElementById(conn.fromId);
+const toEl = document.getElementById(conn.toId);
+if (!fromEl || !toEl) return;
+
+const pinFrom = fromEl.querySelector('.pin');
+const pinTo = toEl.querySelector('.pin');
+if (!pinFrom || !pinTo) return;
+
+const ptFrom = getPinCenterCoordinates(pinFrom);
+const ptTo = getPinCenterCoordinates(pinTo);
+
+conn.lineElement.setAttribute('d', gravityPath(ptFrom, ptTo, 0.16, 12, 120));
+conn.lineElement.setAttribute('stroke', conn.color);
+});
+}
+
+function clearSelection() {
+if (selectedItem) selectedItem.classList.remove('selected');
+if (selectedConnection) selectedConnection.classList.remove('connection-selected');
+selectedItem = null;
+selectedConnection = null;
+updateTextOptionsVisibility();
+}
+
+function selectItem(item) {
+clearSelection();
+selectedItem = item;
+item.classList.add('selected');
+updateTextOptionsVisibility();
+}
+
+function selectConnection(connection) {
+clearSelection();
+selectedConnection = connection.lineElement;
+selectedConnection.classList.add('connection-selected');
+updateTextOptionsVisibility();
+}
+
+function updateTextOptionsVisibility() {
+if (selectedItem && selectedItem.classList.contains('text-item')) {
+textOptionsPanel.classList.add('visible');
+syncTextOptionsFromItem(selectedItem);
+} else {
+textOptionsPanel.classList.remove('visible');
+}
+}
+
+function syncTextOptionsFromItem(item) {
+const textContent = item.querySelector('.text-content');
+if (!textContent) return;
+textFontSelect.value = textContent.dataset.font || 'Patrick Hand';
+textWeightSelect.value = textContent.dataset.weight || '400';
+textColorInput.value = textContent.dataset.color || '#333333';
+
+const align = textContent.style.textAlign || textContent.dataset.align || 'left';
+document.querySelectorAll('.align-btn').forEach(btn => {
+btn.classList.toggle('active', btn.dataset.align === align);
+});
+}
+
+function deleteSelected() {
+if (selectedItem) {
+const itemId = selectedItem.id;
+
+for (let i = connections.length - 1; i >= 0; i--) {
+const conn = connections[i];
+if (conn.fromId === itemId || conn.toId === itemId) {
+conn.lineElement.remove();
+connections.splice(i, 1);
+}
+}
+
+selectedItem.remove();
+selectedItem = null;
+drawConnections();
+updateTextOptionsVisibility();
+return;
+}
+
+if (selectedConnection) {
+const index = connections.findIndex(
+conn => conn.lineElement === selectedConnection
+);
+
+if (index !== -1) {
+connections[index].lineElement.remove();
+connections.splice(index, 1);
+}
+
+selectedConnection = null;
+drawConnections();
+}
+}
+
+deleteButton.addEventListener('click', deleteSelected);
+
+toolPin.addEventListener('click', () => toolDock.classList.toggle('open'));
+document.addEventListener('mousedown', event => {
+if (!toolDock.contains(event.target)) toolDock.classList.remove('open');
+});
+
+function saveBoard() {
+const items = Array.from(canvas.querySelectorAll('.board-item')).map(item => {
+if (item.classList.contains('text-item')) {
+const textContent = item.querySelector('.text-content');
+return {
+id: item.id,
+type: 'text',
+content: textContent.textContent,
+x: parseFloat(item.style.left) || 0,
+y: parseFloat(item.style.top) || 0,
+rotation: item.style.transform || 'rotate(0deg)',
+width: item.style.width || null,
+height: item.style.height || null,
+maxWidth: item.style.maxWidth || '',
+align: textContent.style.textAlign || 'left',
+color: textContent.dataset.color || '#333333',
+font: textContent.dataset.font || 'Patrick Hand',
+weight: textContent.dataset.weight || '400',
+baseFontSize: parseFloat(textContent.dataset.baseFontSize) || 18
+};
+} else {
+const image = item.querySelector('img');
+return {
+id: item.id,
+type: 'image',
+src: image ? image.src : '',
+x: parseFloat(item.style.left) || 0,
+y: parseFloat(item.style.top) || 0,
+rotation: item.style.transform || 'rotate(0deg)',
+width: item.style.width || null,
+height: item.style.height || null,
+maxWidth: item.style.maxWidth || ''
+};
+}
+});
+
+const data = {
+format: 'infinite-corkboard',
+version: 2,
+view: { panX, panY, zoom },
+stringColor: stringColorInput.value,
+items,
+connections: connections.map(conn => ({
+fromId: conn.fromId,
+toId: conn.toId,
+color: conn.color
+}))
+};
+
+const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+const url = URL.createObjectURL(blob);
+const link = document.createElement('a');
+link.href = url;
+link.download = 'infinite-corkboard.json';
+document.body.appendChild(link);
+link.click();
+link.remove();
+URL.revokeObjectURL(url);
+}
+
+function buildExportSvg() {
+const items = Array.from(canvas.querySelectorAll('.board-item'));
+const itemData = items.map(item => {
+const x = parseFloat(item.style.left) || 0;
+const y = parseFloat(item.style.top) || 0;
+const width = item.offsetWidth || 120;
+const height = item.offsetHeight || 100;
+const rotationMatch = (item.style.transform || '').match(/rotate\(([-\d.]+)deg\)/i);
+const rotation = rotationMatch ? Number(rotationMatch[1]) : 0;
+const pin = item.querySelector('.pin');
+const pinPoint = pin ? getPinCenterCoordinates(pin) : { x: x + width / 2, y: y };
+
+if (item.classList.contains('text-item')) {
+const textContent = item.querySelector('.text-content');
+return {
+id: item.id, type: 'text', x, y, width, height, rotation, pinPoint,
+content: textContent.textContent || '',
+align: textContent.style.textAlign || 'left',
+color: textContent.dataset.color || '#333333',
+font: textContent.dataset.font || 'Patrick Hand',
+weight: textContent.dataset.weight || '400',
+fontSize: parseFloat(textContent.style.fontSize) || 18,
+textX: textContent.offsetLeft + x,
+textY: textContent.offsetTop + y
+};
+} else {
+const image = item.querySelector('img');
+return {
+id: item.id, type: 'image', src: image ? image.src : '',
+x, y, width, height, rotation, pinPoint,
+imageX: image ? image.offsetLeft : 0,
+imageY: image ? image.offsetTop : 0,
+imageWidth: image ? (image.offsetWidth || Math.max(1, width - 20)) : 0,
+imageHeight: image ? (image.offsetHeight || Math.max(1, height - 35)) : 0
+};
+}
+});
+
+if (!itemData.length) {
+const fallbackWidth = Math.max(800, container.clientWidth);
+const fallbackHeight = Math.max(600, container.clientHeight);
+return {
+svg: makeSvgDocument(0, 0, fallbackWidth, fallbackHeight, [], []),
+width: fallbackWidth,
+height: fallbackHeight
+};
+}
+
+const pad = 45;
+const bounds = itemData.reduce((b, item) => {
+const radius = Math.sqrt(item.width * item.width + item.height * item.height) / 2;
+const cx = item.x + item.width / 2;
+const cy = item.y + item.height / 2;
+b.minX = Math.min(b.minX, cx - radius);
+b.minY = Math.min(b.minY, cy - radius);
+b.maxX = Math.max(b.maxX, cx + radius);
+b.maxY = Math.max(b.maxY, cy + radius);
+return b;
+}, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+
+const minX = Math.floor(bounds.minX - pad);
+const minY = Math.floor(bounds.minY - pad);
+const width = Math.max(1, Math.ceil(bounds.maxX - bounds.minX + pad * 2));
+const height = Math.max(1, Math.ceil(bounds.maxY - bounds.minY + pad * 2));
+return {
+svg: makeSvgDocument(minX, minY, width, height, itemData, connections),
+width,
+height
+};
+}
+
+function makeSvgDocument(minX, minY, width, height, items, connectionList) {
+const esc = value => String(value).replace(/[&<>"']/g, char => ({
+'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;'
+}[char]));
+
+const byId = new Map(items.map(item => [item.id, item]));
+const lineMarkup = connectionList.map(conn => {
+const from = byId.get(conn.fromId);
+const to = byId.get(conn.toId);
+if (!from || !to) return '';
+return `<path d="${gravityPath(from.pinPoint, to.pinPoint)}" fill="none" stroke="${esc(conn.color || '#ff3b30')}" stroke-width="4" stroke-linecap="round" filter="url(#lineShadow)"/>`;
+}).join('');
+
+const itemMarkup = items.map(item => {
+const cx = item.x + item.width / 2;
+const cy = item.y + item.height / 2;
+
+let contentMarkup = '';
+if (item.type === 'text') {
+const lines = (item.content || '').split('\n');
+const textAnchorMap = { left: 'start', center: 'middle', right: 'end' };
+const anchor = textAnchorMap[item.align] || 'start';
+const textX = item.textX + (item.align === 'center' ? (item.width - 20) / 2 : item.align === 'right' ? item.width - 14 : 14);
+
+const tspans = lines.map((line, i) => {
+const dy = i === 0 ? 0 : (item.fontSize * 1.4);
+return `<tspan x="${textX}" dy="${dy}">${esc(line)}</tspan>`;
+}).join('');
+
+contentMarkup = `<text x="${textX}" y="${item.textY + item.fontSize}" text-anchor="${anchor}" font-family="${esc(item.font)}" font-size="${item.fontSize}" fill="${esc(item.color)}" font-weight="${item.weight}">${tspans}</text>`;
+} else {
+contentMarkup = `<image href="${esc(item.src)}" x="${item.x + item.imageX}" y="${item.y + item.imageY}" width="${item.imageWidth}" height="${item.imageHeight}" preserveAspectRatio="none"/>`;
+}
+
+return `<g transform="rotate(${item.rotation} ${cx} ${cy})"> <rect x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" rx="1" fill="#ffffff" filter="url(#cardShadow)"/> ${contentMarkup} <circle cx="${item.pinPoint.x}" cy="${item.pinPoint.y}" r="10" fill="#ff3b30" filter="url(#cardShadow)"/> <circle cx="${item.pinPoint.x - 2}" cy="${item.pinPoint.y - 2}" r="3" fill="#ffffff" opacity=".6"/> </g>`;
+}).join('');
+
+return `<?xml version="1.0" encoding="UTF-8"?> <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="${minX} ${minY} ${width} ${height}"> <defs> <pattern id="corkPattern" width="60" height="60" patternUnits="userSpaceOnUse"> <rect width="60" height="60" fill="#d7a15c"/> <circle cx="0" cy="0" r="9" fill="#bc843d"/> <circle cx="30" cy="30" r="9" fill="#bc843d"/> </pattern> <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%"> <feDropShadow dx="3" dy="5" stdDeviation="5" flood-color="#000000" flood-opacity=".3"/> </filter> <filter id="lineShadow" x="-30%" y="-30%" width="160%" height="160%"> <feDropShadow dx="2" dy="3" stdDeviation="2" flood-color="#000000" flood-opacity=".4"/> </filter> </defs> <rect x="${minX}" y="${minY}" width="${width}" height="${height}" fill="url(#corkPattern)"/> ${lineMarkup} ${itemMarkup} </svg>`;
+}
+
+function downloadBlob(blob, filename) {
+const url = URL.createObjectURL(blob);
+const link = document.createElement('a');
+link.href = url;
+link.download = filename;
+document.body.appendChild(link);
+link.click();
+link.remove();
+setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportSvg() {
+try {
+const result = buildExportSvg();
+downloadBlob(new Blob([result.svg], { type: 'image/svg+xml;charset=utf-8' }), 'infinite-corkboard.svg');
+} catch (error) {
+alert('Unable to export SVG: ' + error.message);
+}
+}
+
+function exportJpeg() {
+try {
+const result = buildExportSvg();
+const svgBlob = new Blob([result.svg], { type: 'image/svg+xml;charset=utf-8' });
+const svgUrl = URL.createObjectURL(svgBlob);
+const image = new Image();
+
+image.onload = () => {
+try {
+const scale = Math.min(2, 12000 / Math.max(result.width, result.height));
+const outputWidth = Math.max(1, Math.round(result.width * scale));
+const outputHeight = Math.max(1, Math.round(result.height * scale));
+const exportCanvas = document.createElement('canvas');
+exportCanvas.width = outputWidth;
+exportCanvas.height = outputHeight;
+const context = exportCanvas.getContext('2d');
+context.fillStyle = '#d7a15c';
+context.fillRect(0, 0, outputWidth, outputHeight);
+context.drawImage(image, 0, 0, outputWidth, outputHeight);
+exportCanvas.toBlob(blob => {
+if (blob) downloadBlob(blob, 'infinite-corkboard.jpg');
+else alert('JPEG export failed. The board may be too large.');
+URL.revokeObjectURL(svgUrl);
+}, 'image/jpeg', 0.92);
+} catch (error) {
+URL.revokeObjectURL(svgUrl);
+alert('Unable to export JPEG: ' + error.message);
+}
+};
+
+image.onerror = () => {
+URL.revokeObjectURL(svgUrl);
+alert('Unable to render the board for JPEG export. Try exporting SVG instead.');
+};
+image.src = svgUrl;
+} catch (error) {
+alert('Unable to export JPEG: ' + error.message);
+}
+}
+
+function addConnection(fromId, toId, color) {
+if (!document.getElementById(fromId) || !document.getElementById(toId)) return;
+const duplicate = connections.some(conn =>
+(conn.fromId === fromId && conn.toId === toId) ||
+(conn.fromId === toId && conn.toId === fromId)
+);
+if (duplicate) return;
+
+const lineElement = document.createElementNS(SVG_NS, 'path');
+lineElement.setAttribute('fill', 'none');
+lineElement.setAttribute('stroke', color);
+lineElement.setAttribute('stroke-width', '4');
+lineElement.setAttribute('stroke-linecap', 'round');
+lineElement.style.filter = 'drop-shadow(2px 3px 2px rgba(0,0,0,0.4))';
+lineElement.style.pointerEvents = 'stroke';
+lineElement.style.cursor = 'pointer';
+const connection = { fromId, toId, color, lineElement };
+lineElement.addEventListener('mousedown', event => {
+event.stopPropagation();
+selectConnection(connection);
+});
+svgLayer.appendChild(lineElement);
+connections.push(connection);
+drawConnections();
+}
+
+function loadBoard(data) {
+if (!data || data.format !== 'infinite-corkboard' || !Array.isArray(data.items) || !Array.isArray(data.connections)) {
+throw new Error('This is not a valid Infinite Corkboard JSON file.');
+}
+
+clearSelection();
+connections.forEach(conn => conn.lineElement.remove());
+connections.length = 0;
+canvas.querySelectorAll('.board-item').forEach(item => item.remove());
+itemCount = 0;
+
+data.items.forEach(saved => {
+if (!saved || typeof saved.x !== 'number' || typeof saved.y !== 'number') return;
+if (saved.type === 'text') {
+createTextItem(saved);
+} else if (typeof saved.src === 'string') {
+createBoardItem(saved.src, saved.x, saved.y, saved);
+}
+});
+
+data.connections.forEach(conn => {
+if (conn && typeof conn.fromId === 'string' && typeof conn.toId === 'string') {
+addConnection(conn.fromId, conn.toId, conn.color || '#ff3b30');
+}
+});
+
+if (data.view) {
+panX = Number.isFinite(data.view.panX) ? data.view.panX : 0;
+panY = Number.isFinite(data.view.panY) ? data.view.panY : 0;
+zoom = Number.isFinite(data.view.zoom) ? Math.min(4, Math.max(0.2, data.view.zoom)) : 1;
+} else {
+panX = 0; panY = 0; zoom = 1;
+}
+if (typeof data.stringColor === 'string' && /^#[0-9a-f]{6}$/i.test(data.stringColor)) {
+stringColorInput.value = data.stringColor;
+}
+updateTransform();
+}
+
+function createTextItem(saved = null) {
+itemCount++;
+const itemId = saved?.id || 'text-item-' + itemCount;
+const numericId = Number(String(itemId).replace(/^text-item-/, ''));
+if (Number.isFinite(numericId)) itemCount = Math.max(itemCount, numericId);
+
+const item = document.createElement('div');
+item.className = 'board-item text-item';
+item.id = itemId;
+
+const defaultX = saved?.x ?? 100 + Math.random() * 200;
+const defaultY = saved?.y ?? 100 + Math.random() * 150;
+const defaultWidth = saved?.width ? parseFloat(saved.width) : 240;
+const defaultHeight = saved?.height ? parseFloat(saved.height) : 180;
+
+item.style.left = defaultX + 'px';
+item.style.top = defaultY + 'px';
+item.style.width = defaultWidth + 'px';
+item.style.height = defaultHeight + 'px';
+item.style.maxWidth = 'none';
+item.style.minWidth = '80px';
+item.style.minHeight = '60px';
+
+const randomRot = (Math.random() * 6 - 3).toFixed(1);
+item.style.transform = saved?.rotation || `rotate(${randomRot}deg)`;
+
+const pin = document.createElement('div');
+pin.className = 'pin';
+pin.dataset.itemId = itemId;
+
+const textContent = document.createElement('div');
+textContent.className = 'text-content';
+textContent.contentEditable = 'true';
+textContent.spellcheck = false;
+textContent.textContent = saved?.content || '';
+
+const baseFontSize = saved?.baseFontSize || 18;
+const baseWidth = defaultWidth;
+textContent.dataset.font = saved?.font || 'Patrick Hand';
+textContent.dataset.weight = saved?.weight || '400';
+textContent.dataset.color = saved?.color || '#333333';
+textContent.dataset.baseFontSize = baseFontSize;
+textContent.dataset.baseWidth = baseWidth;
+textContent.style.fontSize = baseFontSize + 'px';
+textContent.style.fontFamily = `'${textContent.dataset.font}', cursive`;
+textContent.style.fontWeight = textContent.dataset.weight;
+textContent.style.color = textContent.dataset.color;
+textContent.style.textAlign = saved?.align || 'left';
+
+const resizeHandle = document.createElement('div');
+resizeHandle.className = 'resize-handle';
+resizeHandle.title = 'Drag to resize note';
+
+item.appendChild(pin);
+item.appendChild(textContent);
+item.appendChild(resizeHandle);
+canvas.appendChild(item);
+
+// Prevent drag when editing text
+textContent.addEventListener('mousedown', e => {
+if (document.activeElement === textContent) {
+e.stopPropagation();
+return;
+}
+});
+
+textContent.addEventListener('focus', () => {
+isEditingText = true;
+selectItem(item);
+});
+
+textContent.addEventListener('blur', () => {
+isEditingText = false;
+});
+
+textContent.addEventListener('dblclick', e => {
+e.stopPropagation();
+textContent.focus();
+});
+
+item.addEventListener('mousedown', e => {
+if (e.target.classList.contains('pin')) return;
+
+// If clicking on text content and we're not already editing, just select
+if (e.target === textContent && document.activeElement !== textContent) {
+selectItem(item);
+activeItem = item;
+const point = screenToBoard(e.clientX, e.clientY);
+itemOffsetX = point.x - (parseFloat(item.style.left) || 0);
+itemOffsetY = point.y - (parseFloat(item.style.top) || 0);
+isDraggingItem = true;
+item.style.zIndex = 30;
+e.preventDefault();
+e.stopPropagation();
+return;
+}
+
+// If already editing, let text editing take over
+if (document.activeElement === textContent) {
+return;
+}
+
+selectItem(item);
+activeItem = item;
+
+if (e.target.classList.contains('resize-handle')) {
+    isResizingItem = true;
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    resizeStartWidth = item.offsetWidth;
+    resizeStartHeight = item.offsetHeight;
+
+    // Decide whether font should scale during this resize
+    resizeBaseWidth = item.offsetWidth;
+    resizeBaseFontSize = parseFloat(textContent.style.fontSize) || 18;
+    const textHeight = textContent.scrollHeight;
+    const itemContentHeight = Math.max(1, item.offsetHeight - 45);
+    const fillRatio = textHeight / itemContentHeight;
+    // Only scale font when text fills 35%–95% of the box (not too short, not overflowing)
+    resizeShouldScaleFont = (fillRatio >= 0.35 && fillRatio <= 0.95);
+} else {
+isDraggingItem = true;
+const point = screenToBoard(e.clientX, e.clientY);
+itemOffsetX = point.x - (parseFloat(item.style.left) || 0);
+itemOffsetY = point.y - (parseFloat(item.style.top) || 0);
+}
+
+item.style.zIndex = 30;
+e.preventDefault();
+e.stopPropagation();
+});
+
+pin.addEventListener('mousedown', e => {
+e.preventDefault();
+isDrawingString = true;
+startPin = pin;
+
+const pinCenter = getPinCenterCoordinates(pin);
+tempLine = createLine();
+tempLine.setAttribute('x1', pinCenter.x);
+tempLine.setAttribute('y1', pinCenter.y);
+tempLine.setAttribute('x2', pinCenter.x);
+tempLine.setAttribute('y2', pinCenter.y);
+tempLine.setAttribute('stroke', stringColorInput.value);
+tempLine.setAttribute('stroke-width', '3');
+tempLine.setAttribute('stroke-dasharray', '4 2');
+tempLine.style.pointerEvents = 'none';
+svgLayer.appendChild(tempLine);
+
+e.stopPropagation();
+});
+
+// Auto-resize height based on content
+textContent.addEventListener('input', () => {
+if (item.offsetHeight > defaultHeight && !isResizingItem) {
+const contentHeight = textContent.scrollHeight + 40;
+const newHeight = Math.min(500, Math.max(defaultHeight, contentHeight));
+item.style.height = newHeight + 'px';
+}
+});
+}
+
+function createBoardItem(src, x, y, saved = null) {
+itemCount++;
+const itemId = saved?.id || 'item-' + itemCount;
+const numericId = Number(String(itemId).replace(/^item-/, ''));
+if (Number.isFinite(numericId)) itemCount = Math.max(itemCount, numericId);
+const item = document.createElement('div');
+
+item.className = 'board-item';
+item.id = itemId;
+item.style.left = x + 'px';
+item.style.top = y + 'px';
+
+const randomRot = (Math.random() * 6 - 3).toFixed(1);
+item.style.transform = saved?.rotation || `rotate(${randomRot}deg)`;
+if (saved?.width) item.style.width = saved.width;
+if (saved?.height) item.style.height = saved.height;
+if (saved?.maxWidth !== undefined) item.style.maxWidth = saved.maxWidth;
+
+const pin = document.createElement('div');
+pin.className = 'pin';
+pin.dataset.itemId = itemId;
+
+const img = document.createElement('img');
+img.src = src;
+img.alt = 'Corkboard image';
+img.addEventListener('load', drawConnections);
+
+const resizeHandle = document.createElement('div');
+resizeHandle.className = 'resize-handle';
+resizeHandle.title = 'Drag to resize image';
+
+item.appendChild(pin);
+item.appendChild(img);
+item.appendChild(resizeHandle);
+canvas.appendChild(item);
+
+item.addEventListener('mousedown', e => {
+if (e.target.classList.contains('pin')) return;
+
+selectItem(item);
+activeItem = item;
+
+if (e.target.classList.contains('resize-handle')) {
+    isResizingItem = true;
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    resizeStartWidth = item.offsetWidth;
+    resizeStartHeight = item.offsetHeight;
+    resizeShouldScaleFont = false; // Image items don't scale font
+} else {
+isDraggingItem = true;
+const point = screenToBoard(e.clientX, e.clientY);
+itemOffsetX = point.x - (parseFloat(item.style.left) || 0);
+itemOffsetY = point.y - (parseFloat(item.style.top) || 0);
+}
+
+item.style.zIndex = 30;
+e.preventDefault();
+e.stopPropagation();
+});
+
+pin.addEventListener('mousedown', e => {
+e.preventDefault();
+isDrawingString = true;
+startPin = pin;
+
+const pinCenter = getPinCenterCoordinates(pin);
+tempLine = createLine();
+tempLine.setAttribute('x1', pinCenter.x);
+tempLine.setAttribute('y1', pinCenter.y);
+tempLine.setAttribute('x2', pinCenter.x);
+tempLine.setAttribute('y2', pinCenter.y);
+tempLine.setAttribute('stroke', stringColorInput.value);
+tempLine.setAttribute('stroke-width', '3');
+tempLine.setAttribute('stroke-dasharray', '4 2');
+tempLine.style.pointerEvents = 'none';
+svgLayer.appendChild(tempLine);
+
+e.stopPropagation();
+});
+}
+
+// === Text Options Event Handlers ===
+
+function applyTextOption(prop, value) {
+if (!selectedItem || !selectedItem.classList.contains('text-item')) return;
+const textContent = selectedItem.querySelector('.text-content');
+if (!textContent) return;
+
+switch (prop) {
+case 'font':
+textContent.dataset.font = value;
+textContent.style.fontFamily = `'${value}', ${value === 'Patrick Hand' || value === 'Comic Sans MS' ? 'cursive' : 'sans-serif'}`;
+break;
+case 'weight':
+textContent.dataset.weight = value;
+textContent.style.fontWeight = value;
+break;
+case 'color':
+textContent.dataset.color = value;
+textContent.style.color = value;
+break;
+case 'align':
+textContent.style.textAlign = value;
+break;
+}
+}
+
+textFontSelect.addEventListener('change', () => {
+applyTextOption('font', textFontSelect.value);
+});
+
+textWeightSelect.addEventListener('change', () => {
+applyTextOption('weight', textWeightSelect.value);
+});
+
+textColorInput.addEventListener('input', () => {
+applyTextOption('color', textColorInput.value);
+});
+
+document.querySelectorAll('.align-btn').forEach(btn => {
+btn.addEventListener('click', () => {
+document.querySelectorAll('.align-btn').forEach(b => b.classList.remove('active'));
+btn.classList.add('active');
+applyTextOption('align', btn.dataset.align);
+});
+});
+
+// === Add Text Button ===
+
+addTextBtn.addEventListener('click', () => {
+const centerBoard = screenToBoard(
+container.clientWidth / 2,
+container.clientHeight / 2
+);
+createTextItem({
+x: centerBoard.x - 120,
+y: centerBoard.y - 90
+});
+});
+
+// === Save/Load/Export Buttons ===
+
+saveButton.addEventListener('click', saveBoard);
+exportJpegButton.addEventListener('click', exportJpeg);
+exportSvgButton.addEventListener('click', exportSvg);
+loadButton.addEventListener('click', () => loadFileInput.click());
+loadFileInput.addEventListener('change', () => {
+const file = loadFileInput.files && loadFileInput.files[0];
+if (!file) return;
+const reader = new FileReader();
+reader.onload = () => {
+try {
+loadBoard(JSON.parse(reader.result));
+toolDock.classList.remove('open');
+} catch (error) {
+alert('Unable to load corkboard: ' + error.message);
+}
+loadFileInput.value = '';
+};
+reader.onerror = () => alert('Could not read the selected JSON file.');
+reader.readAsText(file);
+});
+
+// === Keyboard ===
+
+window.addEventListener('keydown', e => {
+// Allow Escape to exit text editing
+if (e.key === 'Escape' && document.activeElement && document.activeElement.classList.contains('text-content')) {
+document.activeElement.blur();
+isEditingText = false;
+return;
+}
+
+if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+
+const tag = document.activeElement && document.activeElement.tagName;
+if (document.activeElement?.isContentEditable) return;
+if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+if (selectedItem || selectedConnection) {
+e.preventDefault();
+deleteSelected();
+}
+});
+
+// === Pan ===
+
+function beginPan(e) {
+clearSelection();
+if (document.activeElement && document.activeElement.classList.contains('text-content')) {
+document.activeElement.blur();
+isEditingText = false;
+}
+isPanning = true;
+startX = e.clientX - panX;
+startY = e.clientY - panY;
+}
+
+container.addEventListener('mousedown', e => {
+if (e.target === container) beginPan(e);
+});
+
+canvas.addEventListener('mousedown', e => {
+if (e.target === canvas) beginPan(e);
+});
+
+svgLayer.addEventListener('mousedown', e => {
+if (e.target === svgLayer) {
+clearSelection();
+if (document.activeElement && document.activeElement.classList.contains('text-content')) {
+document.activeElement.blur();
+isEditingText = false;
+}
+isPanning = true;
+startX = e.clientX - panX;
+startY = e.clientY - panY;
+}
+});
+
+// === Zoom ===
+
+container.addEventListener('wheel', e => {
+e.preventDefault();
+
+const rect = container.getBoundingClientRect();
+const cursorX = e.clientX - rect.left;
+const cursorY = e.clientY - rect.top;
+const boardX = (cursorX - panX) / zoom;
+const boardY = (cursorY - panY) / zoom;
+
+const zoomFactor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+const newZoom = Math.min(4, Math.max(0.2, zoom * zoomFactor));
+
+panX = cursorX - boardX * newZoom;
+panY = cursorY - boardY * newZoom;
+zoom = newZoom;
+updateTransform();
+}, { passive: false });
+
+// === File Drop ===
+
+container.addEventListener('dragover', e => {
+e.preventDefault();
+e.stopPropagation();
+});
+
+container.addEventListener('drop', e => {
+e.preventDefault();
+e.stopPropagation();
+
+const files = Array.from(e.dataTransfer.files);
+const dropPoint = screenToBoard(e.clientX, e.clientY);
+
+files.forEach((file, index) => {
+if (!file.type.startsWith('image/')) {
+console.warn('Not an image file:', file.name);
+return;
+}
+
+const reader = new FileReader();
+
+reader.onload = event => {
+if (!event.target.result) {
+console.error('Failed to read image:', file.name);
+return;
+}
+
+createBoardItem(
+event.target.result,
+dropPoint.x + index * 20 - 50,
+dropPoint.y + index * 20 - 50
+);
+};
+
+reader.onerror = () => console.error('Error reading image:', file.name);
+reader.readAsDataURL(file);
+});
+});
+
+// === Mouse Move ===
+
+window.addEventListener('mousemove', e => {
+if (isPanning) {
+panX = e.clientX - startX;
+panY = e.clientY - startY;
+updateTransform();
+} else if (isResizingItem && activeItem) {
+const deltaX = (e.clientX - resizeStartX) / zoom;
+const deltaY = (e.clientY - resizeStartY) / zoom;
+const newWidth = Math.max(80, resizeStartWidth + deltaX);
+const newHeight = Math.max(60, resizeStartHeight + deltaY);
+
+activeItem.style.width = newWidth + 'px';
+activeItem.style.height = newHeight + 'px';
+activeItem.style.maxWidth = 'none';
+
+// Scale text font size only when appropriate (text fills box reasonably)
+if (activeItem.classList.contains('text-item') && resizeShouldScaleFont) {
+    const textContent = activeItem.querySelector('.text-content');
+    if (textContent) {
+        const scale = newWidth / resizeBaseWidth;
+        const newFontSize = Math.max(10, Math.min(96, resizeBaseFontSize * scale));
+        textContent.style.fontSize = newFontSize + 'px';
+        textContent.dataset.baseFontSize = newFontSize;
+        textContent.dataset.baseWidth = newWidth;
+    }
+}
+
+const image = activeItem.querySelector('img');
+if (image) {
+image.style.width = '100%';
+image.style.height = '100%';
+image.style.objectFit = 'contain';
+}
+
+drawConnections();
+} else if (isDraggingItem && activeItem) {
+const point = screenToBoard(e.clientX, e.clientY);
+activeItem.style.left = (point.x - itemOffsetX) + 'px';
+activeItem.style.top = (point.y - itemOffsetY) + 'px';
+drawConnections();
+} else if (isDrawingString && tempLine) {
+const boardPoint = screenToBoard(e.clientX, e.clientY);
+tempLine.setAttribute('x2', boardPoint.x);
+tempLine.setAttribute('y2', boardPoint.y);
+}
+});
+
+// === Mouse Up ===
+
+window.addEventListener('mouseup', e => {
+isPanning = false;
+
+if (activeItem) activeItem.style.zIndex = selectedItem === activeItem ? 20 : 2;
+isDraggingItem = false;
+isResizingItem = false;
+activeItem = null;
+
+if (isDrawingString) {
+isDrawingString = false;
+
+const targetPin = e.target.closest ? e.target.closest('.pin') : null;
+
+if (targetPin && targetPin !== startPin && startPin) {
+const fromId = startPin.dataset.itemId;
+const toId = targetPin.dataset.itemId;
+
+const exists = connections.some(conn =>
+(conn.fromId === fromId && conn.toId === toId) ||
+(conn.fromId === toId && conn.toId === fromId)
+);
+
+if (!exists) addConnection(fromId, toId, stringColorInput.value);
+}
+
+if (tempLine) {
+tempLine.remove();
+tempLine = null;
+}
+
+startPin = null;
+drawConnections();
+}
+});
+
+window.addEventListener('resize', drawConnections);
+</script>
+
+</body>
+</html>
