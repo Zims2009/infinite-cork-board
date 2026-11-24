@@ -279,7 +279,7 @@ cursor: pointer;
 }
 
 .text-content:empty::before {
-    content: 'Double-click to type...';
+    content: 'Click to type...';
     color: #888;
     font-style: italic;
     pointer-events: none;
@@ -1036,16 +1036,27 @@ if (e.target.classList.contains('pin')) return;
 
 // If clicking on text content and we're not already editing, just select
 if (e.target === textContent && document.activeElement !== textContent) {
-selectItem(item);
-activeItem = item;
-const point = screenToBoard(e.clientX, e.clientY);
-itemOffsetX = point.x - (parseFloat(item.style.left) || 0);
-itemOffsetY = point.y - (parseFloat(item.style.top) || 0);
-isDraggingItem = true;
-item.style.zIndex = 30;
-e.preventDefault();
-e.stopPropagation();
-return;
+    const wasAlreadySelected = (selectedItem === item);
+    selectItem(item);
+
+    // If item was already selected, clicking again enters edit mode
+    if (wasAlreadySelected) {
+        textContent.focus();
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
+
+    // First click: select and prepare for drag
+    activeItem = item;
+    const point = screenToBoard(e.clientX, e.clientY);
+    itemOffsetX = point.x - (parseFloat(item.style.left) || 0);
+    itemOffsetY = point.y - (parseFloat(item.style.top) || 0);
+    isDraggingItem = true;
+    item.style.zIndex = 30;
+    e.preventDefault();
+    e.stopPropagation();
+    return;
 }
 
 // If already editing, let text editing take over
