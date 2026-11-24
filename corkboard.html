@@ -437,7 +437,7 @@ background: #219a52;
 <div class="hint">
 1. Drag and drop images onto the board<br>
 2. Click "Add Text" to create a text note<br>
-3. Double-click text to edit; drag to move<br>
+3. Click text to type; click & drag to move<br>
 4. Connect red pins; strings sag with gravity<br>
 5. Drag empty space to pan; scroll to zoom<br>
 6. Select an item/string and press Delete to remove<br>
@@ -499,6 +499,7 @@ let tempLine = null;
 let selectedItem = null;
 let selectedConnection = null;
 let isEditingText = false;
+let pendingTextEdit = null;
 
 let itemCount = 0;
 const connections = [];
@@ -1034,26 +1035,26 @@ textContent.focus();
 item.addEventListener('mousedown', e => {
 if (e.target.classList.contains('pin')) return;
 
-// If clicking on text content and we're not already editing, just select
+// If clicking on text content and we're not already editing
 if (e.target === textContent && document.activeElement !== textContent) {
-    const wasAlreadySelected = (selectedItem === item);
     selectItem(item);
+    item.style.zIndex = 30;
 
-    // If item was already selected, clicking again enters edit mode
-    if (wasAlreadySelected) {
-        textContent.focus();
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-    }
+    // Set up pending edit: if user just clicks (no drag), focus text.
+    // If they move the mouse > 5px, it becomes a drag instead.
+    pendingTextEdit = {
+        item: item,
+        textContent: textContent,
+        startX: e.clientX,
+        startY: e.clientY
+    };
 
-    // First click: select and prepare for drag
+    // Also prepare drag values in case it becomes a drag
     activeItem = item;
     const point = screenToBoard(e.clientX, e.clientY);
     itemOffsetX = point.x - (parseFloat(item.style.left) || 0);
     itemOffsetY = point.y - (parseFloat(item.style.top) || 0);
-    isDraggingItem = true;
-    item.style.zIndex = 30;
+
     e.preventDefault();
     e.stopPropagation();
     return;
@@ -1407,7 +1408,17 @@ reader.readAsDataURL(file);
 // === Mouse Move ===
 
 window.addEventListener('mousemove', e => {
-if (isPanning) {
+    if (pendingTextEdit) {
+        const dx = e.clientX - pendingTextEdit.startX;
+        const dy = e.clientY - pendingTextEdit.startY;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            // It's a drag, not a click — cancel the edit
+            pendingTextEdit = null;
+            isDraggingItem = true;
+        }
+    }
+
+    if (isPanning) {
 panX = e.clientX - startX;
 panY = e.clientY - startY;
 updateTransform();
@@ -1456,7 +1467,17 @@ tempLine.setAttribute('y2', boardPoint.y);
 // === Mouse Up ===
 
 window.addEventListener('mouseup', e => {
-isPanning = false;
+    // If it was a simple click on text (didn't move), enter edit mode
+    if (pendingTextEdit) {
+        pendingTextEdit.textContent.focus();
+        pendingTextEdit = null;
+        isDraggingItem = false;
+        activeItem = null;
+        isPanning = false;
+        return;
+    }
+
+    isPanning = false;
 
 if (activeItem) activeItem.style.zIndex = selectedItem === activeItem ? 20 : 2;
 isDraggingItem = false;
