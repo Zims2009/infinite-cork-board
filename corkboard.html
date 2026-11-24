@@ -254,30 +254,42 @@ cursor: pointer;
 /* === Text Item Styles === */
 
 .text-content {
-min-width: 20px;
-min-height: 20px;
-width: 100%;
-padding: 4px 2px;
-font-size: 18px;
-line-height: 1.4;
-color: #333333;
-outline: none;
-cursor: text;
-white-space: pre-wrap;
-word-wrap: break-word;
-overflow: hidden;
-font-family: 'Patrick Hand', cursive;
-user-select: text;
+    min-width: 60px;
+    min-height: 60px;
+    width: 100%;
+    padding: 8px 6px;
+    font-size: 18px;
+    line-height: 1.4;
+    color: #333333;
+    outline: none;
+    cursor: text;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow: hidden;
+    font-family: 'Patrick Hand', cursive;
+    user-select: text;
+    border: 2px dashed transparent;
+    border-radius: 4px;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.text-content:hover {
+    border-color: rgba(33, 150, 243, 0.5);
+    background-color: rgba(33, 150, 243, 0.04);
 }
 
 .text-content:empty::before {
-content: 'Type here...';
-color: #aaa;
-pointer-events: none;
+    content: 'Double-click to type...';
+    color: #888;
+    font-style: italic;
+    pointer-events: none;
 }
 
 .text-content:focus {
-outline: none;
+    outline: none;
+    border-color: rgba(33, 150, 243, 0.8);
+    border-style: solid;
+    background-color: rgba(33, 150, 243, 0.03);
 }
 
 /* Text Options Panel */
